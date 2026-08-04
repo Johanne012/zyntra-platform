@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -106,10 +107,9 @@ def _select_providers(req_provider: str | None) -> list[Provider]:
             detail="No providers configured. Set at least one API key in the environment.",
         )
 
-    # Skip providers in cooldown, keep order via balancer
     ids = [p.id for p in providers if p.available and not stats.is_in_cooldown(p.id)]
     if not ids:
-        ids = list(by_id.keys())  # all cooling down — still try
+        ids = list(by_id.keys())
 
     balancer: ProviderBalancer = app.state.balancer
     weights = {p.id: p.weight for p in providers}
@@ -151,14 +151,19 @@ async def completions(body: ChatRequest) -> Any:
         if resp.status_code >= 400:
             text = resp.text[:200]
             is_rl = resp.status_code == 429
-            stats.record_failure(provider.id, f"HTTP {resp.status_code} {text}", is_rate_limit=is_rl)
+            stats.record_failure(
+                provider.id, f"HTTP {resp.status_code} {text}", is_rate_limit=is_rl
+            )
             errors.append(f"{provider.id}: HTTP {resp.status_code} {text}")
             continue
 
         if body.stream:
+            stream_resp = resp
 
-            async def event_stream() -> AsyncIterator[bytes]:
-                async for chunk in resp.aiter_bytes():
+            async def event_stream(
+                r: httpx.Response = stream_resp,
+            ) -> AsyncIterator[bytes]:
+                async for chunk in r.aiter_bytes():
                     yield chunk
 
             stats.record_success(provider.id)
