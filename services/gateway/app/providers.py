@@ -15,10 +15,10 @@ class Provider:
     base_url: str
     api_key: str | None
     model_map: dict[str, str]
+    weight: int = 1
 
     @property
     def available(self) -> bool:
-        # Ollama needs no key; others need a non-empty key
         if self.id == "ollama":
             return True
         return bool(self.api_key)
@@ -35,6 +35,7 @@ def build_providers(settings: Settings) -> list[Provider]:
                 "gpt-4o-mini": "deepseek-chat",
                 "gpt-4o": "deepseek-chat",
             },
+            weight=3,
         ),
         Provider(
             id="openrouter",
@@ -45,6 +46,18 @@ def build_providers(settings: Settings) -> list[Provider]:
                 "gpt-4o-mini": "openai/gpt-4o-mini",
                 "gpt-4o": "openai/gpt-4o",
             },
+            weight=2,
+        ),
+        Provider(
+            id="groq",
+            base_url="https://api.groq.com/openai/v1",
+            api_key=settings.groq_api_key,
+            model_map={
+                "default": "llama-3.1-8b-instant",
+                "gpt-4o-mini": "llama-3.1-8b-instant",
+                "gpt-4o": "llama-3.3-70b-versatile",
+            },
+            weight=2,
         ),
         Provider(
             id="nvidia_nim",
@@ -54,6 +67,7 @@ def build_providers(settings: Settings) -> list[Provider]:
                 "default": "meta/llama-3.1-8b-instruct",
                 "gpt-4o-mini": "meta/llama-3.1-8b-instruct",
             },
+            weight=1,
         ),
         Provider(
             id="kimi",
@@ -63,6 +77,7 @@ def build_providers(settings: Settings) -> list[Provider]:
                 "default": "moonshot-v1-8k",
                 "gpt-4o-mini": "moonshot-v1-8k",
             },
+            weight=1,
         ),
         Provider(
             id="ollama",
@@ -72,9 +87,9 @@ def build_providers(settings: Settings) -> list[Provider]:
                 "default": "llama3.2",
                 "gpt-4o-mini": "llama3.2",
             },
+            weight=1,
         ),
     ]
-    # Prefer default provider first if available
     default = settings.gateway_default_provider
     providers.sort(key=lambda p: (0 if p.id == default else 1, p.id))
     return providers

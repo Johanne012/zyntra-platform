@@ -1,8 +1,7 @@
-"""ZYNTRA Gateway — FastAPI entrypoint with lifespan."""
+"""ZYNTRA Gateway — FastAPI entrypoint with lifespan, balancer, stats."""
 
 from __future__ import annotations
 
-import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
@@ -10,10 +9,13 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
+from app.balancer import ProviderBalancer
 from app.config import Settings, get_settings
+from app.pricing import calc_cost_usd
 from app.providers import Provider, build_providers, chat_completion, resolve_model
+from app.stats import stats
 
 
 class ChatMessage(BaseModel):
@@ -27,7 +29,6 @@ class ChatRequest(BaseModel):
     stream: bool = False
     temperature: float | None = None
     max_tokens: int | None = None
-    # Optional: force a provider id
     provider: str | None = None
 
 
@@ -37,13 +38,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.http = httpx.AsyncClient()
     app.state.providers = build_providers(settings)
+    app.state.balancer = ProviderBalancer(settings.gateway_balance_strategy)
     yield
     await app.state.http.aclose()
 
 
 app = FastAPI(
     title="ZYNTRA Gateway",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -61,10 +63,22 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "zyntra-gateway",
+        "version": "0.2.0",
+        "balance_strategy": app.state.settings.gateway_balance_strategy,
         "providers": [
-            {"id": p.id, "available": p.available} for p in providers
+            {
+                "id": p.id,
+                "available": p.available,
+                "in_cooldown": stats.is_in_cooldown(p.id),
+            }
+            for p in providers
         ],
     }
+
+
+@app.get("/v1/stats")
+async def usage_stats() -> dict[str, Any]:
+    return stats.snapshot()
 
 
 @app.get("/v1/models")
@@ -81,18 +95,31 @@ async def list_models() -> dict[str, Any]:
 
 def _select_providers(req_provider: str | None) -> list[Provider]:
     providers: list[Provider] = app.state.providers
-    available = [p for p in providers if p.available]
+    by_id = {p.id: p for p in providers if p.available}
     if req_provider:
-        matched = [p for p in available if p.id == req_provider]
-        if not matched:
+        if req_provider not in by_id:
             raise HTTPException(status_code=400, detail=f"Provider not available: {req_provider}")
-        return matched
-    if not available:
+        return [by_id[req_provider]]
+    if not by_id:
         raise HTTPException(
             status_code=503,
             detail="No providers configured. Set at least one API key in the environment.",
         )
-    return available
+
+    # Skip providers in cooldown, keep order via balancer
+    ids = [p.id for p in providers if p.available and not stats.is_in_cooldown(p.id)]
+    if not ids:
+        ids = list(by_id.keys())  # all cooling down — still try
+
+    balancer: ProviderBalancer = app.state.balancer
+    weights = {p.id: p.weight for p in providers}
+    ordered_ids = balancer.order(ids, weights=weights)
+    return [by_id[i] for i in ordered_ids if i in by_id]
+
+
+def _extract_usage(data: dict) -> tuple[int, int]:
+    usage = data.get("usage") or {}
+    return int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
 
 
 @app.post("/v1/chat/completions")
@@ -116,11 +143,16 @@ async def completions(body: ChatRequest) -> Any:
                 max_tokens=body.max_tokens,
             )
         except httpx.HTTPError as exc:
-            errors.append(f"{provider.id}: {exc}")
+            msg = str(exc)
+            stats.record_failure(provider.id, msg)
+            errors.append(f"{provider.id}: {msg}")
             continue
 
         if resp.status_code >= 400:
-            errors.append(f"{provider.id}: HTTP {resp.status_code} {resp.text[:200]}")
+            text = resp.text[:200]
+            is_rl = resp.status_code == 429
+            stats.record_failure(provider.id, f"HTTP {resp.status_code} {text}", is_rate_limit=is_rl)
+            errors.append(f"{provider.id}: HTTP {resp.status_code} {text}")
             continue
 
         if body.stream:
@@ -129,13 +161,21 @@ async def completions(body: ChatRequest) -> Any:
                 async for chunk in resp.aiter_bytes():
                     yield chunk
 
+            stats.record_success(provider.id)
             return StreamingResponse(event_stream(), media_type="text/event-stream")
 
         data = resp.json()
-        # Tag which provider served the request
+        in_tok, out_tok = (0, 0)
+        cost = 0.0
         if isinstance(data, dict):
+            in_tok, out_tok = _extract_usage(data)
+            cost = calc_cost_usd(model, in_tok, out_tok)
             data.setdefault("zyntra", {})["provider"] = provider.id
             data.setdefault("zyntra", {})["model"] = model
+            data.setdefault("zyntra", {})["cost_usd"] = cost
+        stats.record_success(
+            provider.id, input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost
+        )
         return JSONResponse(data)
 
     raise HTTPException(
@@ -144,5 +184,6 @@ async def completions(body: ChatRequest) -> Any:
             "message": "All providers failed",
             "errors": errors,
             "default_provider": settings.gateway_default_provider,
+            "balance_strategy": settings.gateway_balance_strategy,
         },
     )
