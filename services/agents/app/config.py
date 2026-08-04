@@ -1,0 +1,18 @@
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    agents_host: str = "0.0.0.0"
+    agents_port: int = 8081
+    agents_database_url: str = "sqlite+aiosqlite:///./data/agents.db"
+    agents_secret_key: str = "change-me"
+    gateway_internal_url: str = "http://127.0.0.1:8080"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
