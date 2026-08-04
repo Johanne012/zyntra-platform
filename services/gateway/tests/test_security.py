@@ -1,10 +1,10 @@
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
 from app.main import app
 from app.security import RateLimiter, parse_cors_origins, require_gateway_key
-from fastapi import HTTPException
 
 
 def test_parse_cors_star() -> None:

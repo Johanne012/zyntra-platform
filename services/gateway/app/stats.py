@@ -103,12 +103,8 @@ class StatsCollector:
             providers_data = {}
             for name, s in self.providers.items():
                 samples = list(s.latency_samples)
-                avg_lat = (
-                    round(s.total_latency_ms / s.successes, 2) if s.successes else None
-                )
-                success_rate = (
-                    round(100.0 * s.successes / s.requests, 2) if s.requests else None
-                )
+                avg_lat = round(s.total_latency_ms / s.successes, 2) if s.successes else None
+                success_rate = round(100.0 * s.successes / s.requests, 2) if s.requests else None
                 providers_data[name] = {
                     "requests": s.requests,
                     "successes": s.successes,

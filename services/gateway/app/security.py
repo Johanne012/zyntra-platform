@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from threading import Lock
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
