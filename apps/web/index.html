@@ -8,14 +8,15 @@
 </head>
 <body>
   <header class="hero">
-    <p class="badge">Monorepo · Gateway · Agents · Web</p>
+    <p class="badge">Monorepo · Gateway · Agents · Web · Secured</p>
     <h1>ZYNTRA Platform</h1>
     <p class="lead">
-      منصة موحّدة: بوابة مزوّدين متعددين + وكلاء آمنون + واجهة واضحة — مربوطة بعقود مشتركة وتشغيل واحد.
+      منصة موحّدة: بوابة مؤمّنة + مراقبة أداء الذكاء الاصطناعي + وكلاء + واجهة.
     </p>
     <div class="actions">
       <a class="btn primary" href="https://github.com/Johanne012/zyntra-platform">GitHub</a>
       <a class="btn" href="console.html">Console</a>
+      <a class="btn" href="monitor.html">Monitor</a>
       <a class="btn" href="#architecture">البنية</a>
     </div>
   </header>
@@ -26,24 +27,24 @@
       <div class="grid">
         <article class="card">
           <h3>Gateway :8080</h3>
-          <p>OpenAI-compatible · fallback · streaming · DeepSeek / OpenRouter / NIM / Kimi / Ollama</p>
-          <code>GET /health · POST /v1/chat/completions</code>
+          <p>API key · rate limit · CORS · latency metrics · multi-provider</p>
+          <code>GET /health · GET /v1/stats · POST /v1/chat/completions</code>
         </article>
         <article class="card">
           <h3>Agents :8081</h3>
-          <p>مفاتيح مُجزّأة SHA-256 · فحص ملكية · تشغيل عبر البوابة · workflows</p>
+          <p>مفاتيح SHA-256 · ملكية · استدعاء البوابة بمفتاح داخلي</p>
           <code>POST /v1/register · /v1/agents · /runs</code>
         </article>
         <article class="card">
           <h3>Web :3000</h3>
-          <p>واجهة تعريف + Console + فحص صحة الخدمات</p>
+          <p>Landing · Console · AI Monitor</p>
         </article>
       </div>
     </section>
 
     <section id="status">
       <h2>حالة الخدمات (محلي)</h2>
-      <p class="hint">يعمل عند تشغيل <code>docker compose up</code> أو الخوادم محلياً.</p>
+      <p class="hint">يعمل عند تشغيل <code>docker compose up</code>.</p>
       <ul id="health-list" class="health">
         <li>Gateway: <span data-svc="gateway">…</span></li>
         <li>Agents: <span data-svc="agents">…</span></li>
@@ -54,13 +55,14 @@
     <section id="quickstart">
       <h2>تشغيل سريع</h2>
       <pre><code>cp .env.example .env
-docker compose up --build
-# افتح http://localhost:3000 و http://localhost:3000/console.html</code></pre>
+# للإنتاج: عيّن GATEWAY_API_KEY و GATEWAY_CORS_ORIGINS
+docker compose up --build</code></pre>
+      <p class="hint">حماية main: انظر <code>docs/BRANCH_PROTECTION.md</code></p>
     </section>
   </main>
 
   <footer>
-    <p>MIT · ZYNTRA Platform · مبني على أقوى أجزاء gateway + agents security</p>
+    <p>MIT · ZYNTRA Platform</p>
   </footer>
   <script src="app.js"></script>
 </body>

@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     agents_database_url: str = "sqlite+aiosqlite:///./data/agents.db"
     agents_secret_key: str = "change-me"
     gateway_internal_url: str = "http://127.0.0.1:8080"
+    # Same as GATEWAY_API_KEY when gateway auth is enabled
+    gateway_api_key_internal: str | None = None
 
 
 @lru_cache

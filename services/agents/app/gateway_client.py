@@ -25,8 +25,12 @@ async def chat(
     if temperature is not None:
         payload["temperature"] = temperature
 
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if settings.gateway_api_key_internal:
+        headers["Authorization"] = f"Bearer {settings.gateway_api_key_internal}"
+
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(url, json=payload)
+        resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
 
