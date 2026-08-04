@@ -1,13 +1,14 @@
-"""ZYNTRA Gateway — FastAPI entrypoint with lifespan, balancer, stats."""
+"""ZYNTRA Gateway — secured entrypoint with monitoring."""
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -16,6 +17,13 @@ from app.balancer import ProviderBalancer
 from app.config import Settings, get_settings
 from app.pricing import calc_cost_usd
 from app.providers import Provider, build_providers, chat_completion, resolve_model
+from app.security import (
+    RateLimiter,
+    SecurityHeadersMiddleware,
+    client_ip,
+    parse_cors_origins,
+    require_gateway_key,
+)
 from app.stats import stats
 
 
@@ -40,22 +48,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.http = httpx.AsyncClient()
     app.state.providers = build_providers(settings)
     app.state.balancer = ProviderBalancer(settings.gateway_balance_strategy)
+    app.state.rate_limiter = RateLimiter(settings.gateway_rate_limit_per_minute, 60)
     yield
     await app.state.http.aclose()
 
 
 app = FastAPI(
     title="ZYNTRA Gateway",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
+_settings_boot = get_settings()
+_origins = parse_cors_origins(_settings_boot.gateway_cors_origins)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+def _auth(
+    authorization: Annotated[str | None, Header()] = None,
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> None:
+    require_gateway_key(app.state.settings, authorization, x_api_key)
+
+
+def _rate_limit(request: Request) -> None:
+    limiter: RateLimiter = app.state.rate_limiter
+    limiter.check(client_ip(request))
 
 
 @app.get("/health")
@@ -64,7 +89,8 @@ async def health() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "zyntra-gateway",
-        "version": "0.2.0",
+        "version": "0.3.0",
+        "auth_required": bool(app.state.settings.gateway_api_key),
         "balance_strategy": app.state.settings.gateway_balance_strategy,
         "providers": [
             {
@@ -78,12 +104,20 @@ async def health() -> dict[str, Any]:
 
 
 @app.get("/v1/stats")
-async def usage_stats() -> dict[str, Any]:
+async def usage_stats(
+    _: Annotated[None, Depends(_auth)] = None,
+) -> dict[str, Any]:
+    """AI performance snapshot — requires gateway key when configured."""
+    if app.state.settings.gateway_stats_require_auth and not app.state.settings.gateway_api_key:
+        # still open in pure-dev without a key; documented in SECURITY.md
+        pass
     return stats.snapshot()
 
 
 @app.get("/v1/models")
-async def list_models() -> dict[str, Any]:
+async def list_models(
+    _: Annotated[None, Depends(_auth)] = None,
+) -> dict[str, Any]:
     providers: list[Provider] = app.state.providers
     data = []
     for p in providers:
@@ -123,7 +157,12 @@ def _extract_usage(data: dict) -> tuple[int, int]:
 
 
 @app.post("/v1/chat/completions")
-async def completions(body: ChatRequest) -> Any:
+async def completions(
+    body: ChatRequest,
+    request: Request,
+    _: Annotated[None, Depends(_auth)] = None,
+    __: Annotated[None, Depends(_rate_limit)] = None,
+) -> Any:
     settings: Settings = app.state.settings
     client: httpx.AsyncClient = app.state.http
     chain = _select_providers(body.provider)
@@ -132,6 +171,7 @@ async def completions(body: ChatRequest) -> Any:
 
     for provider in chain:
         model = resolve_model(provider, body.model)
+        t0 = time.perf_counter()
         try:
             resp = await chat_completion(
                 client,
@@ -143,16 +183,21 @@ async def completions(body: ChatRequest) -> Any:
                 max_tokens=body.max_tokens,
             )
         except httpx.HTTPError as exc:
+            latency = (time.perf_counter() - t0) * 1000
             msg = str(exc)
-            stats.record_failure(provider.id, msg)
+            stats.record_failure(provider.id, msg, latency_ms=latency)
             errors.append(f"{provider.id}: {msg}")
             continue
 
+        latency = (time.perf_counter() - t0) * 1000
         if resp.status_code >= 400:
             text = resp.text[:200]
             is_rl = resp.status_code == 429
             stats.record_failure(
-                provider.id, f"HTTP {resp.status_code} {text}", is_rate_limit=is_rl
+                provider.id,
+                f"HTTP {resp.status_code} {text}",
+                is_rate_limit=is_rl,
+                latency_ms=latency,
             )
             errors.append(f"{provider.id}: HTTP {resp.status_code} {text}")
             continue
@@ -166,7 +211,7 @@ async def completions(body: ChatRequest) -> Any:
                 async for chunk in r.aiter_bytes():
                     yield chunk
 
-            stats.record_success(provider.id)
+            stats.record_success(provider.id, latency_ms=latency)
             return StreamingResponse(event_stream(), media_type="text/event-stream")
 
         data = resp.json()
@@ -178,8 +223,13 @@ async def completions(body: ChatRequest) -> Any:
             data.setdefault("zyntra", {})["provider"] = provider.id
             data.setdefault("zyntra", {})["model"] = model
             data.setdefault("zyntra", {})["cost_usd"] = cost
+            data.setdefault("zyntra", {})["latency_ms"] = round(latency, 2)
         stats.record_success(
-            provider.id, input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost
+            provider.id,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            cost_usd=cost,
+            latency_ms=latency,
         )
         return JSONResponse(data)
 
