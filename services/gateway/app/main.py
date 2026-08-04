@@ -75,23 +75,28 @@ def _auth(
     authorization: Annotated[str | None, Header()] = None,
     x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
 ) -> None:
-    require_gateway_key(app.state.settings, authorization, x_api_key)
+    settings: Settings = getattr(app.state, "settings", None) or get_settings()
+    require_gateway_key(settings, authorization, x_api_key)
 
 
 def _rate_limit(request: Request) -> None:
-    limiter: RateLimiter = app.state.rate_limiter
+    limiter: RateLimiter | None = getattr(app.state, "rate_limiter", None)
+    if limiter is None:
+        return
     limiter.check(client_ip(request))
 
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    providers: list[Provider] = app.state.providers
+    # Safe when lifespan has not run (e.g. unit tests with ASGITransport).
+    settings: Settings = getattr(app.state, "settings", None) or get_settings()
+    providers: list[Provider] = getattr(app.state, "providers", None) or []
     return {
         "status": "ok",
         "service": "zyntra-gateway",
         "version": "0.3.0",
-        "auth_required": bool(app.state.settings.gateway_api_key),
-        "balance_strategy": app.state.settings.gateway_balance_strategy,
+        "auth_required": bool(settings.gateway_api_key),
+        "balance_strategy": settings.gateway_balance_strategy,
         "providers": [
             {
                 "id": p.id,
@@ -108,7 +113,8 @@ async def usage_stats(
     _: Annotated[None, Depends(_auth)] = None,
 ) -> dict[str, Any]:
     """AI performance snapshot — requires gateway key when configured."""
-    if app.state.settings.gateway_stats_require_auth and not app.state.settings.gateway_api_key:
+    settings: Settings = getattr(app.state, "settings", None) or get_settings()
+    if settings.gateway_stats_require_auth and not settings.gateway_api_key:
         # still open in pure-dev without a key; documented in SECURITY.md
         pass
     return stats.snapshot()
@@ -118,7 +124,7 @@ async def usage_stats(
 async def list_models(
     _: Annotated[None, Depends(_auth)] = None,
 ) -> dict[str, Any]:
-    providers: list[Provider] = app.state.providers
+    providers: list[Provider] = getattr(app.state, "providers", None) or []
     data = []
     for p in providers:
         if not p.available:
@@ -129,7 +135,7 @@ async def list_models(
 
 
 def _select_providers(req_provider: str | None) -> list[Provider]:
-    providers: list[Provider] = app.state.providers
+    providers: list[Provider] = getattr(app.state, "providers", None) or []
     by_id = {p.id: p for p in providers if p.available}
     if req_provider:
         if req_provider not in by_id:
@@ -145,7 +151,9 @@ def _select_providers(req_provider: str | None) -> list[Provider]:
     if not ids:
         ids = list(by_id.keys())
 
-    balancer: ProviderBalancer = app.state.balancer
+    balancer: ProviderBalancer = getattr(app.state, "balancer", None) or ProviderBalancer(
+        "round_robin"
+    )
     weights = {p.id: p.weight for p in providers}
     ordered_ids = balancer.order(ids, weights=weights)
     return [by_id[i] for i in ordered_ids if i in by_id]
@@ -163,8 +171,10 @@ async def completions(
     _: Annotated[None, Depends(_auth)] = None,
     __: Annotated[None, Depends(_rate_limit)] = None,
 ) -> Any:
-    settings: Settings = app.state.settings
-    client: httpx.AsyncClient = app.state.http
+    settings: Settings = getattr(app.state, "settings", None) or get_settings()
+    client: httpx.AsyncClient | None = getattr(app.state, "http", None)
+    if client is None:
+        raise HTTPException(status_code=503, detail="Gateway not ready")
     chain = _select_providers(body.provider)
     messages = [m.model_dump() for m in body.messages]
     errors: list[str] = []

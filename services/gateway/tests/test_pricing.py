@@ -12,4 +12,5 @@ def test_cost_zero_tokens() -> None:
 
 def test_cost_positive() -> None:
     c = calc_cost_usd("deepseek-chat", 1_000_000, 1_000_000)
-    assert c == 0.14 + 0.28
+    # avoid float binary equality traps (0.14 + 0.28)
+    assert abs(c - 0.42) < 1e-9
