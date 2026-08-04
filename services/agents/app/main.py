@@ -1,4 +1,4 @@
-"""ZYNTRA Agents API — auth via API keys, ownership-safe CRUD, gateway-backed runs."""
+"""ZYNTRA Agents API — keys, ownership-safe CRUD, notifications, gateway runs."""
 
 from __future__ import annotations
 
@@ -11,7 +11,16 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import Agent, AgentRun, ApiKey, User, Workflow, get_session, init_db
+from app.db import (
+    Agent,
+    AgentRun,
+    ApiKey,
+    Notification,
+    User,
+    Workflow,
+    get_session,
+    init_db,
+)
 from app.gateway_client import chat
 from app.security import generate_api_key, hash_api_key
 
@@ -22,7 +31,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="ZYNTRA Agents", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ZYNTRA Agents", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,6 +61,20 @@ class RegisterOut(BaseModel):
     key_prefix: str
 
 
+class KeyCreateIn(BaseModel):
+    name: str = "default"
+
+
+class KeyOut(BaseModel):
+    id: int
+    name: str
+    key_prefix: str
+
+
+class KeyCreateOut(KeyOut):
+    api_key: str
+
+
 class AgentIn(BaseModel):
     name: str
     system_prompt: str = "You are a helpful agent."
@@ -71,6 +94,7 @@ class RunIn(BaseModel):
 
 class RunOut(BaseModel):
     id: int
+    agent_id: int | None = None
     status: str
     output_text: str | None
 
@@ -78,6 +102,13 @@ class RunOut(BaseModel):
 class WorkflowIn(BaseModel):
     name: str
     definition_json: str = "{}"
+
+
+class NotificationOut(BaseModel):
+    id: int
+    title: str
+    body: str
+    read: bool
 
 
 async def current_user(
@@ -100,7 +131,7 @@ async def current_user(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "service": "zyntra-agents"}
+    return {"status": "ok", "service": "zyntra-agents", "version": "0.2.0"}
 
 
 @app.post("/v1/register", response_model=RegisterOut)
@@ -118,9 +149,52 @@ async def register(
 
     raw, digest, prefix = generate_api_key()
     session.add(ApiKey(user_id=user.id, key_hash=digest, key_prefix=prefix, name="default"))
+    session.add(
+        Notification(
+            user_id=user.id,
+            title="Welcome to ZYNTRA",
+            body="Your account is ready. Store your API key securely.",
+        )
+    )
     await session.commit()
 
     return RegisterOut(user_id=user.id, email=user.email, api_key=raw, key_prefix=prefix)
+
+
+@app.get("/v1/keys", response_model=list[KeyOut])
+async def list_keys(
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[KeyOut]:
+    result = await session.execute(select(ApiKey).where(ApiKey.user_id == user.id))
+    return [KeyOut(id=k.id, name=k.name, key_prefix=k.key_prefix) for k in result.scalars().all()]
+
+
+@app.post("/v1/keys", response_model=KeyCreateOut)
+async def create_key(
+    body: KeyCreateIn,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> KeyCreateOut:
+    raw, digest, prefix = generate_api_key()
+    row = ApiKey(user_id=user.id, key_hash=digest, key_prefix=prefix, name=body.name)
+    session.add(row)
+    await session.commit()
+    await session.refresh(row)
+    return KeyCreateOut(id=row.id, name=row.name, key_prefix=prefix, api_key=raw)
+
+
+@app.delete("/v1/keys/{key_id}", status_code=204)
+async def revoke_key(
+    key_id: int,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    row = await session.get(ApiKey, key_id)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Key not found")
+    await session.delete(row)
+    await session.commit()
 
 
 @app.post("/v1/agents", response_model=AgentOut)
@@ -207,7 +281,7 @@ async def run_agent(
     try:
         output = await chat(messages, model=agent.model)
         status_s = "completed"
-    except Exception as exc:  # noqa: BLE001 — surface as failed run
+    except Exception as exc:  # noqa: BLE001
         output = f"Error: {exc}"
         status_s = "failed"
 
@@ -219,9 +293,18 @@ async def run_agent(
         status=status_s,
     )
     session.add(run)
+    session.add(
+        Notification(
+            user_id=user.id,
+            title=f"Run {status_s}: {agent.name}",
+            body=(output or "")[:500],
+        )
+    )
     await session.commit()
     await session.refresh(run)
-    return RunOut(id=run.id, status=run.status, output_text=run.output_text)
+    return RunOut(
+        id=run.id, agent_id=agent.id, status=run.status, output_text=run.output_text
+    )
 
 
 @app.get("/v1/runs/{run_id}", response_model=RunOut)
@@ -233,7 +316,27 @@ async def get_run(
     run = await session.get(AgentRun, run_id)
     if run is None or run.user_id != user.id:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RunOut(id=run.id, status=run.status, output_text=run.output_text)
+    return RunOut(
+        id=run.id, agent_id=run.agent_id, status=run.status, output_text=run.output_text
+    )
+
+
+@app.get("/v1/agents/{agent_id}/runs", response_model=list[RunOut])
+async def list_runs(
+    agent_id: int,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[RunOut]:
+    agent = await session.get(Agent, agent_id)
+    if agent is None or agent.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    result = await session.execute(
+        select(AgentRun).where(AgentRun.agent_id == agent_id, AgentRun.user_id == user.id)
+    )
+    return [
+        RunOut(id=r.id, agent_id=r.agent_id, status=r.status, output_text=r.output_text)
+        for r in result.scalars().all()
+    ]
 
 
 @app.post("/v1/workflows")
@@ -256,3 +359,31 @@ async def list_workflows(
 ) -> list[dict[str, Any]]:
     result = await session.execute(select(Workflow).where(Workflow.user_id == user.id))
     return [{"id": w.id, "name": w.name} for w in result.scalars().all()]
+
+
+@app.get("/v1/notifications", response_model=list[NotificationOut])
+async def list_notifications(
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[NotificationOut]:
+    result = await session.execute(
+        select(Notification).where(Notification.user_id == user.id)
+    )
+    return [
+        NotificationOut(id=n.id, title=n.title, body=n.body, read=n.read)
+        for n in result.scalars().all()
+    ]
+
+
+@app.post("/v1/notifications/{notification_id}/read", response_model=NotificationOut)
+async def mark_notification_read(
+    notification_id: int,
+    user: Annotated[User, Depends(current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> NotificationOut:
+    n = await session.get(Notification, notification_id)
+    if n is None or n.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    n.read = True
+    await session.commit()
+    return NotificationOut(id=n.id, title=n.title, body=n.body, read=n.read)

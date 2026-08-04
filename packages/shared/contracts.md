@@ -1,65 +1,44 @@
 # Shared contracts — ZYNTRA Platform
 
-These shapes keep **gateway**, **agents**, and **web** aligned.
-
 ## Gateway
 
 ### `GET /health`
 
-```json
-{
-  "status": "ok",
-  "service": "zyntra-gateway",
-  "providers": [{ "id": "deepseek", "available": true }]
-}
-```
+Includes `balance_strategy` and per-provider `in_cooldown`.
 
-### `POST /v1/chat/completions` (OpenAI-compatible)
+### `GET /v1/stats`
 
-Request:
+In-memory usage: requests, tokens, `cost_usd`, cooldowns (resets on restart).
+
+### `POST /v1/chat/completions`
+
+OpenAI-compatible. Response may include:
 
 ```json
-{
-  "model": "gpt-4o-mini",
-  "messages": [{ "role": "user", "content": "Hello" }],
-  "stream": false,
-  "provider": null
-}
+{ "zyntra": { "provider": "deepseek", "model": "deepseek-chat", "cost_usd": 0.0001 } }
 ```
 
-Response includes optional:
-
-```json
-{ "zyntra": { "provider": "deepseek", "model": "deepseek-chat" } }
-```
+Env: `GATEWAY_BALANCE_STRATEGY=priority|round_robin|random|weighted`
 
 ## Agents
-
-### `POST /v1/register`
-
-```json
-{ "email": "you@example.com" }
-```
-
-→ `{ "user_id", "email", "api_key", "key_prefix" }`  
-`api_key` is shown **once**.
 
 ### Auth
 
 `Authorization: Bearer <api_key>`
 
-### Agents CRUD
+### Keys
 
-- `POST /v1/agents` `{ name, system_prompt?, model? }`
-- `GET /v1/agents`
-- `GET|DELETE /v1/agents/{id}` — **404 if not owner**
+- `GET /v1/keys` — list prefixes only
+- `POST /v1/keys` `{ "name" }` — returns raw key **once**
+- `DELETE /v1/keys/{id}` — owner only
 
-### Runs
+### Agents / runs / workflows
 
-- `POST /v1/agents/{id}/runs` `{ input_text }` → calls **gateway** internally
-- `GET /v1/runs/{id}` — owner only
+Unchanged ownership rules: foreign resources → **404**.
 
-### Workflows
+### Notifications
 
-- `POST /v1/workflows` `{ name, definition_json? }`
-- `GET /v1/workflows` — scoped to user
+- `GET /v1/notifications`
+- `POST /v1/notifications/{id}/read`
+
+Created on register and after each agent run.
