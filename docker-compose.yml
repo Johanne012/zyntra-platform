@@ -1,0 +1,48 @@
+services:
+  gateway:
+    build:
+      context: ./services/gateway
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  agents:
+    build:
+      context: ./services/agents
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    environment:
+      - AGENTS_HOST=0.0.0.0
+      - AGENTS_PORT=8081
+      - GATEWAY_INTERNAL_URL=http://gateway:8080
+    volumes:
+      - agents_data:/app/data
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  web:
+    image: python:3.12-slim
+    working_dir: /web
+    volumes:
+      - ./apps/web:/web:ro
+    command: ["python", "-m", "http.server", "3000", "--bind", "0.0.0.0"]
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+      - agents
+
+volumes:
+  agents_data:
