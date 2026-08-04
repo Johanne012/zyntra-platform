@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
@@ -51,8 +51,9 @@ class StatsCollector:
             s.last_used = time.time()
             s.last_error = None
 
-    def record_failure(self, provider: str, error: str, *,
-                       is_rate_limit: bool = False, cooldown_sec: int = 60) -> None:
+    def record_failure(
+        self, provider: str, error: str, *, is_rate_limit: bool = False, cooldown_sec: int = 60
+    ) -> None:
         with self._lock:
             self.total_requests += 1
             s = self.providers[provider]
