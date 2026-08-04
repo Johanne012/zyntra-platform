@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: ZYNTRA Platform (sketch)
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      summary: Health (gateway or agents)
+      responses:
+        "200":
+          description: OK
+  /v1/chat/completions:
+    post:
+      summary: Gateway chat
+      responses:
+        "200":
+          description: Completion
+  /v1/register:
+    post:
+      summary: Register user + API key
+      responses:
+        "200":
+          description: Key issued once
+  /v1/agents:
+    get:
+      summary: List own agents
+    post:
+      summary: Create agent
+  /v1/agents/{id}/runs:
+    post:
+      summary: Run agent via gateway

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZYNTRA Platform</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <p class="badge">Monorepo · Gateway · Agents · Web</p>
+    <h1>ZYNTRA Platform</h1>
+    <p class="lead">
+      منصة موحّدة: بوابة مزوّدين متعددين + وكلاء آمنون + واجهة واضحة — مربوطة بعقود مشتركة وتشغيل واحد.
+    </p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/Johanne012/zyntra-platform">GitHub</a>
+      <a class="btn" href="#architecture">البنية</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="architecture">
+      <h2>البنية</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Gateway :8080</h3>
+          <p>OpenAI-compatible · fallback · streaming · DeepSeek / OpenRouter / NIM / Kimi / Ollama</p>
+          <code>GET /health · POST /v1/chat/completions</code>
+        </article>
+        <article class="card">
+          <h3>Agents :8081</h3>
+          <p>مفاتيح مُجزّأة SHA-256 · فحص ملكية · تشغيل عبر البوابة · workflows</p>
+          <code>POST /v1/register · /v1/agents · /runs</code>
+        </article>
+        <article class="card">
+          <h3>Web :3000</h3>
+          <p>واجهة تعريف + فحص صحة الخدمات محلياً</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="status">
+      <h2>حالة الخدمات (محلي)</h2>
+      <p class="hint">يعمل عند تشغيل <code>docker compose up</code> أو الخوادم محلياً.</p>
+      <ul id="health-list" class="health">
+        <li>Gateway: <span data-svc="gateway">…</span></li>
+        <li>Agents: <span data-svc="agents">…</span></li>
+      </ul>
+      <button id="refresh" type="button" class="btn">تحديث</button>
+    </section>
+
+    <section id="quickstart">
+      <h2>تشغيل سريع</h2>
+      <pre><code>cp .env.example .env
+docker compose up --build</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p>MIT · ZYNTRA Platform · مبني على أقوى أجزاء gateway + agents security</p>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>
