@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     gateway_default_provider: str = "deepseek"
     gateway_balance_strategy: BalanceStrategy = "priority"
 
+    # Security — leave gateway_api_key empty only for local dev
+    gateway_api_key: str | None = None
+    gateway_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    gateway_rate_limit_per_minute: int = 60
+    gateway_stats_require_auth: bool = True
+
     deepseek_api_key: str | None = None
     openrouter_api_key: str | None = None
     nvidia_nim_api_key: str | None = None
