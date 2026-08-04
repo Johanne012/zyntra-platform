@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated, Any, AsyncIterator
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -228,8 +229,7 @@ async def list_agents(
     result = await session.execute(select(Agent).where(Agent.user_id == user.id))
     agents = result.scalars().all()
     return [
-        AgentOut(id=a.id, name=a.name, system_prompt=a.system_prompt, model=a.model)
-        for a in agents
+        AgentOut(id=a.id, name=a.name, system_prompt=a.system_prompt, model=a.model) for a in agents
     ]
 
 
@@ -302,9 +302,7 @@ async def run_agent(
     )
     await session.commit()
     await session.refresh(run)
-    return RunOut(
-        id=run.id, agent_id=agent.id, status=run.status, output_text=run.output_text
-    )
+    return RunOut(id=run.id, agent_id=agent.id, status=run.status, output_text=run.output_text)
 
 
 @app.get("/v1/runs/{run_id}", response_model=RunOut)
@@ -316,9 +314,7 @@ async def get_run(
     run = await session.get(AgentRun, run_id)
     if run is None or run.user_id != user.id:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RunOut(
-        id=run.id, agent_id=run.agent_id, status=run.status, output_text=run.output_text
-    )
+    return RunOut(id=run.id, agent_id=run.agent_id, status=run.status, output_text=run.output_text)
 
 
 @app.get("/v1/agents/{agent_id}/runs", response_model=list[RunOut])
@@ -366,9 +362,7 @@ async def list_notifications(
     user: Annotated[User, Depends(current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[NotificationOut]:
-    result = await session.execute(
-        select(Notification).where(Notification.user_id == user.id)
-    )
+    result = await session.execute(select(Notification).where(Notification.user_id == user.id))
     return [
         NotificationOut(id=n.id, title=n.title, body=n.body, read=n.read)
         for n in result.scalars().all()
