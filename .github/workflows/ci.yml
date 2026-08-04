@@ -69,5 +69,8 @@ jobs:
           test -f apps/web/styles.css
           test -f apps/web/console.html
           test -f apps/web/console.js
+          test -f apps/web/monitor.html
+          test -f apps/web/monitor.js
           test -f packages/shared/contracts.md
           test -f docker-compose.yml
+          test -f docs/BRANCH_PROTECTION.md

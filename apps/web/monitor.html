@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZYNTRA AI Monitor</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1rem; margin: 1rem 0; }
+    input { width: 100%; padding: 0.5rem; margin: 0.35rem 0 0.75rem; border-radius: 8px; border: 1px solid var(--border); background: #0e1528; color: var(--text); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { border-bottom: 1px solid var(--border); padding: 0.5rem; text-align: right; }
+    .ok { color: #5eead4; } .bad { color: #f87171; }
+    nav a { margin-left: 1rem; color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header class="hero" style="padding-bottom:1rem">
+    <nav>
+      <a href="index.html">الرئيسية</a>
+      <a href="console.html">Console</a>
+      <a href="monitor.html">Monitor</a>
+    </nav>
+    <h1>مراقبة أداء الذكاء الاصطناعي</h1>
+    <p class="lead">طلبات · نجاح · زمن الاستجابة (p50/p95) · تكلفة تقديرية · cooldown</p>
+  </header>
+  <main>
+    <section class="panel">
+      <label>Gateway URL</label>
+      <input id="gw" value="http://localhost:8080" />
+      <label>Gateway API Key (إن وُجد)</label>
+      <input id="key" type="password" placeholder="اختياري في التطوير" />
+      <button class="btn primary" type="button" id="refresh">تحديث</button>
+      <p id="meta" class="hint"></p>
+    </section>
+    <section class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>المزوّد</th>
+            <th>طلبات</th>
+            <th>نجاح %</th>
+            <th>avg ms</th>
+            <th>p95 ms</th>
+            <th>تكلفة $</th>
+            <th>حالة</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </main>
+  <script src="monitor.js"></script>
+</body>
+</html>
