@@ -1,0 +1,32 @@
+{
+  "enabled": false,
+  "levels": {
+    "observe": true,
+    "diagnose": true,
+    "safe_patch": false,
+    "deploy": false
+  },
+  "allowed_automatic_actions": [
+    "restart_failed_health_probe",
+    "clear_stale_runtime_cache",
+    "retry_transient_request"
+  ],
+  "requires_approval": [
+    "dependency_change",
+    "database_migration",
+    "secret_change",
+    "permission_change",
+    "production_deploy",
+    "destructive_operation"
+  ],
+  "validation": [
+    "syntax_check",
+    "unit_tests",
+    "healthcheck",
+    "build_check"
+  ],
+  "rollback": {
+    "required_before_production_change": true,
+    "on_validation_failure": true
+  }
+}
