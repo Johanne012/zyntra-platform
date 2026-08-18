@@ -84,6 +84,9 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSe
 
 async def init_db() -> None:
     async with engine.begin() as conn:
+        # SQLite does not enforce foreign keys unless explicitly enabled.
+        if conn.dialect.name == "sqlite":
+            await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
         await conn.run_sync(Base.metadata.create_all)
 
 
