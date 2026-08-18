@@ -1,29 +1,16 @@
 {
-  "name": "NEXUS / ZYNTRA Core",
-  "version": "0.1.0",
-  "purpose": "Unified project command center with memory, agents, diagnostics, safe self-healing and deployment readiness.",
-  "principles": [
-    "modular",
-    "provider-agnostic",
-    "safe-by-default",
-    "observable",
-    "self-testable",
-    "reversible"
-  ],
-  "modules": {
-    "projects": "planned",
-    "tasks": "planned",
+  "schemaVersion": 1,
+  "name": "ZYNTRA Platform",
+  "core": "NEXUS Core",
+  "status": "foundation",
+  "capabilities": {
+    "gateway": "implemented",
+    "agents": "implemented",
+    "web": "implemented",
+    "projectRegistry": "planned",
     "memory": "planned",
-    "agents": "planned",
-    "diagnostics": "planned",
-    "self_healing": "planned",
-    "deployment": "planned",
-    "integrations": "planned"
+    "selfHealing": "policy-only",
+    "deployment": "environment-dependent"
   },
-  "safety": {
-    "auto_fix": false,
-    "auto_deploy": false,
-    "rollback_on_failed_validation": true,
-    "never_store_secrets_in_repository": true
-  }
+  "rule": "Never report planned or unconfigured capability as operational."
 }
