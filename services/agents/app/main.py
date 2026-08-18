@@ -8,22 +8,14 @@ from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import (
-    Agent,
-    AgentRun,
-    ApiKey,
-    Notification,
-    User,
-    Workflow,
-    get_session,
-    init_db,
-)
+from app.db import Agent, AgentRun, ApiKey, Notification, User, Workflow, get_session, init_db
 from app.gateway_client import chat
+from app.schema import parse_definition
 from app.security import generate_api_key, hash_api_key
 
 
@@ -36,7 +28,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(title="ZYNTRA Agents", version="0.2.1", lifespan=lifespan)
+app = FastAPI(title="ZYNTRA Agents", version="0.2.2", lifespan=lifespan)
 
 
 def _cors_origins(value: str) -> list[str]:
@@ -114,6 +106,15 @@ class WorkflowIn(BaseModel):
     name: str
     definition_json: str = "{}"
 
+    @field_validator("definition_json")
+    @classmethod
+    def validate_definition(cls, value: str) -> str:
+        try:
+            parse_definition(value)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("definition_json must be a valid JSON object") from exc
+        return value
+
 
 class NotificationOut(BaseModel):
     id: int
@@ -145,13 +146,7 @@ async def current_user(
 @app.get("/health")
 async def health() -> dict[str, Any]:
     settings = get_settings()
-    return {
-        "status": "ok",
-        "service": "zyntra-agents",
-        "version": "0.2.1",
-        "database": "configured",
-        "gateway": settings.gateway_internal_url,
-    }
+    return {"status": "ok", "service": "zyntra-agents", "version": "0.2.2", "gateway": settings.gateway_internal_url}
 
 
 @app.post("/v1/register", response_model=RegisterOut)
