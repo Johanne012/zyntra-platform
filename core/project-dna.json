@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "ZYNTRA Platform",
+  "core": "NEXUS Core",
+  "status": "foundation",
+  "capabilities": {
+    "gateway": "implemented",
+    "agents": "implemented",
+    "web": "implemented",
+    "projectRegistry": "planned",
+    "memory": "planned",
+    "selfHealing": "policy-only",
+    "deployment": "environment-dependent"
+  },
+  "rule": "Never report planned or unconfigured capability as operational."
+}
