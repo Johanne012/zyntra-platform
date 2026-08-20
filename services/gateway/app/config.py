@@ -13,8 +13,9 @@ class Settings(BaseSettings):
     gateway_port: int = 8080
     gateway_default_provider: str = "deepseek"
     gateway_balance_strategy: BalanceStrategy = "priority"
+    gateway_environment: Literal["development", "test", "production"] = "development"
 
-    # Security — leave gateway_api_key empty only for local dev
+    # In production the application refuses to start without a gateway key.
     gateway_api_key: str | None = None
     gateway_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     gateway_rate_limit_per_minute: int = 60
