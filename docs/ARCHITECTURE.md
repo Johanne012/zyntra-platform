@@ -1,68 +1,36 @@
 # ZYNTRA Platform — System Architecture
 
 > Last updated: 2026-08-31  
-> Status: Living document (v0.5 — Data Science Team Phase 3)
+> Status: v0.6 — Data Science Team Phase 4 (code generation)
 
-## 1. Overview
+## Data Science Team agents
 
-```
-apps/web → services/agents → services/gateway → providers
-                ↘
-         services/data-science-team  (port 8082)
-```
+| Agent | Role |
+|--------|------|
+| data_loader | Load tabular files |
+| cleaner | Impute / dedupe / strip |
+| eda | Statistical summary |
+| visualizer | Chart JSON specs |
+| feature_engineer | Encode + scale |
+| modeler | RandomForest baseline |
+| interpretability | Permutation (+ SHAP optional) |
+| code_generator | Reproducible Python script |
 
-## 2. Data Science Team — Full agent chain
+Default order: all eight steps.
 
-| # | Agent | Role |
-|---|--------|------|
-| 1 | data_loader | Load CSV / Parquet / Excel / JSON |
-| 2 | cleaner | Impute, strip, drop empty/duplicates |
-| 3 | eda | Describe, missing, correlations |
-| 4 | visualizer | Histogram / bar / heatmap specs |
-| 5 | feature_engineer | One-hot, scale, drop high-cardinality |
-| 6 | modeler | RandomForest baseline + metrics |
-| 7 | interpretability | Permutation importance (+ SHAP if available) |
+### Extra endpoint
 
-**Default pipeline:** all seven steps in order.
+`GET /v1/pipelines/{id}/script` → plain-text generated `.py`
 
-Design notes for interpretability: see `docs/INTERPRETABILITY_AGENT.md`.
+`POST .../run` accepts optional form field `target_column`.
 
-## 3. Context flow between agents
+See also: `docs/CODE_GENERATOR.md`, `docs/INTERPRETABILITY_AGENT.md`.
 
-```
-dataframe → (cleaner/eda/viz) → feature matrix
-         → modeler fits model + train/test splits
-         → interpretability reads model + X_test/y_test
-```
-
-Internal keys (`_model`, `_X_test`, …) are stripped from public API responses.
-
-## 4. API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health |
-| GET | `/v1/agents` | List agents |
-| POST | `/v1/pipelines` | Create (optional custom `steps`) |
-| GET | `/v1/pipelines` | List |
-| GET | `/v1/pipelines/{id}` | Status + results |
-| POST | `/v1/pipelines/{id}/run` | Upload file or `path` form field |
-
-Optional form/instruction for target: modeler accepts `target_column` in context or `target=colname` in instruction (future API extension).
-
-## 5. Dependencies
-
-- Core: pandas, scikit-learn, fastapi
-- Optional: `shap` via `pip install zyntra-data-science-team[explain]`
-
-## 6. Roadmap
+## Roadmap
 
 | Phase | Status |
 |-------|--------|
-| 0 Docs | ✅ |
-| 1 Skeleton + loader | ✅ |
-| 2 Cleaner + EDA + Viz | ✅ |
-| 3 Feature eng + model + interpretability | ✅ |
-| 4 Code generation / reproducible scripts | Planned |
-| 5 Auth + persistent storage | Planned |
+| 0–3 | ✅ |
+| 4 Code generation | ✅ |
+| 5 Auth + persistence | Planned |
 | 6 Web pipeline viewer | Planned |

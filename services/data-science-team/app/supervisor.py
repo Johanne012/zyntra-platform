@@ -6,6 +6,7 @@ from typing import Any
 
 from app.agents.base import BaseAgent
 from app.agents.cleaner import CleanerAgent
+from app.agents.code_generator import CodeGeneratorAgent
 from app.agents.data_loader import DataLoaderAgent
 from app.agents.eda import EDAAgent
 from app.agents.feature_engineer import FeatureEngineerAgent
@@ -15,8 +16,6 @@ from app.agents.visualizer import VisualizerAgent
 
 
 class Supervisor:
-    """Registry + sequential pipeline runner."""
-
     DEFAULT_STEPS = [
         "data_loader",
         "cleaner",
@@ -25,6 +24,7 @@ class Supervisor:
         "feature_engineer",
         "modeler",
         "interpretability",
+        "code_generator",
     ]
 
     def __init__(self) -> None:
@@ -36,6 +36,7 @@ class Supervisor:
             "feature_engineer": FeatureEngineerAgent(),
             "modeler": ModelerAgent(),
             "interpretability": InterpretabilityAgent(),
+            "code_generator": CodeGeneratorAgent(),
         }
 
     def list_agents(self) -> list[dict[str, str]]:
@@ -65,6 +66,10 @@ class Supervisor:
         current = dict(context)
 
         for step in steps:
+            # Feed accumulated public results to code_generator
+            if step == "code_generator":
+                current["pipeline_results"] = list(results)
+
             result = await self.run_step(step, current)
             results.append({k: v for k, v in result.items() if not k.startswith("_")})
 
@@ -75,7 +80,6 @@ class Supervisor:
                     "results": results,
                 }
 
-            # Carry forward internal artifacts
             if "_dataframe" in result:
                 current["dataframe"] = result["_dataframe"]
             if "_feature_columns" in result:
@@ -88,7 +92,9 @@ class Supervisor:
             for key in ("_X_train", "_y_train", "_X_test", "_y_test"):
                 if key in result:
                     current[key] = result[key]
-                    current[key[1:]] = result[key]  # also without underscore
+                    current[key[1:]] = result[key]
+            if result.get("agent") == "data_loader" and result.get("source"):
+                current["source_filename"] = result["source"]
 
         return {
             "status": "completed",

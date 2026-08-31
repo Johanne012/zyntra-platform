@@ -2,6 +2,7 @@
 
 from app.agents.base import BaseAgent
 from app.agents.cleaner import CleanerAgent
+from app.agents.code_generator import CodeGeneratorAgent
 from app.agents.data_loader import DataLoaderAgent
 from app.agents.eda import EDAAgent
 from app.agents.feature_engineer import FeatureEngineerAgent
@@ -18,4 +19,5 @@ __all__ = [
     "FeatureEngineerAgent",
     "ModelerAgent",
     "InterpretabilityAgent",
+    "CodeGeneratorAgent",
 ]
