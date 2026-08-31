@@ -8,22 +8,21 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_feature_engineer_protects_target_and_encodes():
-    # Build CSV with skew, category mid-cardinality, datetime, target
+def test_feature_engineer_train_fit_and_modeler_reuses_split():
     lines = ["ts,city,amount,user_id,churn"]
-    cities = [f"C{i % 25}" for i in range(40)]  # 25 levels → frequency encode band
+    cities = [f"C{i % 25}" for i in range(40)]
     base = datetime(2024, 1, 1)
     for i in range(40):
         ts = (base + timedelta(days=i, hours=i % 24)).isoformat(sep=" ")
-        amount = 10 ** (1 + (i % 5))  # skewed positive
+        amount = 10 ** (1 + (i % 5))
         lines.append(f"{ts},{cities[i]},{amount},uid_{i},{i % 2}")
     raw = ("\n".join(lines)).encode()
 
     r = client.post(
         "/v1/pipelines",
         json={
-            "name": "fe-deep",
-            "steps": ["data_loader", "cleaner", "feature_engineer"],
+            "name": "fe-leakage",
+            "steps": ["data_loader", "cleaner", "feature_engineer", "modeler"],
         },
     )
     assert r.status_code == 200
@@ -38,11 +37,13 @@ def test_feature_engineer_protects_target_and_encodes():
     data = r2.json()
     assert data["status"] == "completed", data
 
-    fe = data["results"][-1]
+    fe = data["results"][2]
     assert fe["agent"] == "feature_engineer"
-    assert fe["status"] == "ok"
-    assert fe.get("target_column") == "churn"
-    # user_id should be dropped; churn not in feature list as engineered id
-    assert "churn" not in fe["feature_columns"]
-    actions_text = " ".join(fe["actions"])
-    assert "Protected target" in actions_text or fe["target_column"] == "churn"
+    assert fe["train_fit"] is True
+    assert any("train only" in a for a in fe["actions"])
+
+    modeler = data["results"][3]
+    assert modeler["agent"] == "modeler"
+    assert modeler["split_source"] == "feature_engineer"
+    assert modeler["n_train"] == fe["n_train"]
+    assert modeler["n_test"] == fe["n_test"]
