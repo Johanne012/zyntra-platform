@@ -13,8 +13,14 @@ def test_health():
     assert data["service"] == "zyntra-data-science-team"
 
 
+def test_root():
+    r = client.get("/")
+    assert r.status_code == 200
+
+
 def test_list_agents():
     r = client.get("/v1/agents")
     assert r.status_code == 200
-    names = {a["name"] for a in r.json()}
+    agents = r.json()
+    names = {a["name"] for a in agents}
     assert names == {"data_loader", "cleaner", "eda", "visualizer"}

@@ -15,7 +15,7 @@ class Pipeline:
     id: str
     name: str
     status: str = "created"  # created | running | completed | failed
-    steps: list[str] = field(default_factory=lambda: list(Supervisor.DEFAULT_PIPELINE))
+    steps: list[str] = field(default_factory=list)
     results: list[dict[str, Any]] = field(default_factory=list)
     context: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -42,7 +42,7 @@ class PipelineStore:
         pipe = Pipeline(
             id=pid,
             name=name,
-            steps=steps or list(Supervisor.DEFAULT_PIPELINE),
+            steps=steps or list(Supervisor.DEFAULT_STEPS),
         )
         self._pipelines[pid] = pipe
         return pipe

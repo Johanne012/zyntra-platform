@@ -44,9 +44,12 @@ async def security_headers(request, call_next):  # type: ignore[no-untyped-def]
     return response
 
 
+# ── Schemas ──────────────────────────────────────────────────────────────
+
+
 class PipelineCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
-    steps: list[str] = Field(default_factory=lambda: list(Supervisor.DEFAULT_PIPELINE))
+    steps: list[str] = Field(default_factory=lambda: list(Supervisor.DEFAULT_STEPS))
 
 
 class PipelineOut(BaseModel):
@@ -57,6 +60,9 @@ class PipelineOut(BaseModel):
     results: list[dict[str, Any]]
     created_at: str
     updated_at: str
+
+
+# ── Health ───────────────────────────────────────────────────────────────
 
 
 @app.get("/health")
@@ -77,9 +83,15 @@ async def root() -> dict[str, str]:
     }
 
 
+# ── Agents ───────────────────────────────────────────────────────────────
+
+
 @app.get("/v1/agents")
 async def list_agents() -> list[dict[str, str]]:
     return supervisor.list_agents()
+
+
+# ── Pipelines ────────────────────────────────────────────────────────────
 
 
 @app.post("/v1/pipelines", response_model=PipelineOut)
@@ -114,6 +126,7 @@ async def run_pipeline(
     file: UploadFile | None = File(None),
     path: str | None = Form(None),
 ) -> dict[str, Any]:
+    """Run the pipeline. Provide either an uploaded file or a server-side path."""
     pipe = store.get(pipeline_id)
     if pipe is None:
         raise HTTPException(status_code=404, detail="Pipeline not found")

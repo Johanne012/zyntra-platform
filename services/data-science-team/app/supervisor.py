@@ -14,10 +14,10 @@ from app.agents.visualizer import VisualizerAgent
 class Supervisor:
     """
     Lightweight supervisor that maintains a registry of agents
-    and executes a sequential pipeline.
+    and executes a simple sequential pipeline.
     """
 
-    DEFAULT_PIPELINE = ["data_loader", "cleaner", "eda", "visualizer"]
+    DEFAULT_STEPS = ["data_loader", "cleaner", "eda", "visualizer"]
 
     def __init__(self) -> None:
         self.agents: dict[str, BaseAgent] = {
@@ -59,9 +59,8 @@ class Supervisor:
 
         for step in steps:
             result = await self.run_step(step, current)
-            # Public result without internal objects
-            public = {k: v for k, v in result.items() if not k.startswith("_")}
-            results.append(public)
+            # Public result without internal dataframe
+            results.append({k: v for k, v in result.items() if not k.startswith("_")})
 
             if result.get("status") != "ok":
                 return {

@@ -1,4 +1,4 @@
-"""Data Cleaner Agent — basic cleaning & imputation."""
+"""Data Cleaner Agent — basic cleaning and imputation."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from app.agents.base import BaseAgent
 
 class CleanerAgent(BaseAgent):
     name = "cleaner"
-    description = "Clean data: drop empty columns, handle nulls, strip strings, drop duplicates"
+    description = "Clean data: drop empty columns/rows, impute missing values, strip strings"
 
     async def run(self, context: dict[str, Any], instruction: str = "") -> dict[str, Any]:
         df: pd.DataFrame | None = context.get("dataframe")
@@ -25,13 +25,20 @@ class CleanerAgent(BaseAgent):
         original_shape = list(df.shape)
         actions: list[str] = []
 
-        # Drop columns that are entirely null
-        all_null_cols = [c for c in df.columns if df[c].isna().all()]
-        if all_null_cols:
-            df = df.drop(columns=all_null_cols)
-            actions.append(f"Dropped entirely-null columns: {all_null_cols}")
+        # 1. Drop fully empty columns
+        empty_cols = [c for c in df.columns if df[c].isna().all()]
+        if empty_cols:
+            df = df.drop(columns=empty_cols)
+            actions.append(f"Dropped empty columns: {empty_cols}")
 
-        # Strip whitespace from string columns
+        # 2. Drop fully empty rows
+        before_rows = len(df)
+        df = df.dropna(how="all")
+        dropped_rows = before_rows - len(df)
+        if dropped_rows:
+            actions.append(f"Dropped {dropped_rows} fully empty rows")
+
+        # 3. Strip string columns
         str_cols = df.select_dtypes(include=["object", "string"]).columns
         for col in str_cols:
             df[col] = df[col].astype(str).str.strip()
@@ -39,41 +46,47 @@ class CleanerAgent(BaseAgent):
         if len(str_cols):
             actions.append(f"Stripped whitespace on {len(str_cols)} string columns")
 
-        # Drop exact duplicate rows
+        # 4. Impute numeric columns with median
+        num_cols = df.select_dtypes(include="number").columns
+        imputed_num: dict[str, float] = {}
+        for col in num_cols:
+            null_count = int(df[col].isna().sum())
+            if null_count > 0:
+                median = float(df[col].median())
+                df[col] = df[col].fillna(median)
+                imputed_num[col] = median
+        if imputed_num:
+            actions.append(f"Imputed numeric nulls with median: {imputed_num}")
+
+        # 5. Impute categorical with mode
+        cat_cols = df.select_dtypes(include=["object", "string", "category"]).columns
+        imputed_cat: dict[str, str] = {}
+        for col in cat_cols:
+            null_count = int(df[col].isna().sum())
+            if null_count > 0:
+                mode = df[col].mode(dropna=True)
+                fill_value = str(mode.iloc[0]) if len(mode) else "unknown"
+                df[col] = df[col].fillna(fill_value)
+                imputed_cat[col] = fill_value
+        if imputed_cat:
+            actions.append(f"Imputed categorical nulls with mode: {imputed_cat}")
+
+        # 6. Drop duplicate rows
         before_dup = len(df)
         df = df.drop_duplicates()
-        dropped_dups = before_dup - len(df)
-        if dropped_dups:
-            actions.append(f"Dropped {dropped_dups} duplicate rows")
+        dup_removed = before_dup - len(df)
+        if dup_removed:
+            actions.append(f"Removed {dup_removed} duplicate rows")
 
-        # Simple numeric imputation (median) for columns with < 30% nulls
-        numeric_cols = df.select_dtypes(include="number").columns
-        imputed: list[str] = []
-        for col in numeric_cols:
-            null_ratio = df[col].isna().mean()
-            if 0 < null_ratio < 0.3:
-                median = df[col].median()
-                df[col] = df[col].fillna(median)
-                imputed.append(col)
-        if imputed:
-            actions.append(f"Median-imputed numeric columns: {imputed}")
-
-        # Fill remaining object nulls with mode (if mode exists)
-        for col in str_cols:
-            if col not in df.columns:
-                continue
-            if df[col].isna().any():
-                mode = df[col].mode()
-                if len(mode):
-                    df[col] = df[col].fillna(mode.iloc[0])
-                    actions.append(f"Mode-filled string column: {col}")
+        if not actions:
+            actions.append("No cleaning actions needed")
 
         return {
             "status": "ok",
             "agent": self.name,
             "original_shape": original_shape,
-            "cleaned_shape": list(df.shape),
+            "final_shape": list(df.shape),
             "actions": actions,
-            "null_counts_after": df.isnull().sum().to_dict(),
+            "remaining_nulls": df.isnull().sum().to_dict(),
             "_dataframe": df,
         }
