@@ -1,89 +1,68 @@
 # ZYNTRA Platform — System Architecture
 
 > Last updated: 2026-08-31  
-> Status: Living document (v0.4 — Data Science Team Phase 2)
+> Status: Living document (v0.5 — Data Science Team Phase 3)
 
-## 1. High-Level Overview
-
-ZYNTRA is a **unified AI platform** monorepo that combines:
-
-- Multi-provider LLM Gateway (OpenAI-compatible)
-- Agent Runtime & management
-- Web control shell
-- Specialized multi-agent Data Science Team
+## 1. Overview
 
 ```
-┌─────────────────┐
-│   apps/web      │  ← Control & Monitor UI
-└────────┬────────┘
-         │
-┌────────▼────────┐     ┌──────────────────────┐
-│ services/agents │────▶│ services/gateway     │
-│ (CRUD + Runs)   │     │ (LLM Proxy + Stats)  │
-└────────┬────────┘     └──────────┬───────────┘
-         │                         │
-         │              ┌──────────▼───────────┐
-         │              │   External Providers │
-         │              └──────────────────────┘
-         │
-┌────────▼────────────────────────┐
-│ services/data-science-team      │
-│ Supervisor + 4 specialized agents│
-└─────────────────────────────────┘
+apps/web → services/agents → services/gateway → providers
+                ↘
+         services/data-science-team  (port 8082)
 ```
 
-## 2. Services
+## 2. Data Science Team — Full agent chain
 
-| Service              | Port | Role                                      |
-|----------------------|------|-------------------------------------------|
-| gateway              | 8080 | LLM proxy, balancing, stats               |
-| agents               | 8081 | Generic agents CRUD + runs                |
-| data-science-team    | 8082 | Supervisor-led DS pipeline                |
-| web                  | 3000 | Static control shell                      |
+| # | Agent | Role |
+|---|--------|------|
+| 1 | data_loader | Load CSV / Parquet / Excel / JSON |
+| 2 | cleaner | Impute, strip, drop empty/duplicates |
+| 3 | eda | Describe, missing, correlations |
+| 4 | visualizer | Histogram / bar / heatmap specs |
+| 5 | feature_engineer | One-hot, scale, drop high-cardinality |
+| 6 | modeler | RandomForest baseline + metrics |
+| 7 | interpretability | Permutation importance (+ SHAP if available) |
 
-## 3. Data Science Team — Agents (Phase 2)
+**Default pipeline:** all seven steps in order.
 
-| Agent        | Role                                                                 |
-|--------------|----------------------------------------------------------------------|
-| data_loader  | Load CSV / Parquet / Excel / JSON                                    |
-| cleaner      | Drop empty cols/rows, impute nulls, strip strings, remove duplicates |
-| eda          | Describe, missingness, correlations, value counts, cardinality       |
-| visualizer   | Chart specs: histogram, bar, correlation heatmap (Plotly-ready)      |
+Design notes for interpretability: see `docs/INTERPRETABILITY_AGENT.md`.
 
-**Default pipeline:** `data_loader → cleaner → eda → visualizer`
+## 3. Context flow between agents
 
-### API
+```
+dataframe → (cleaner/eda/viz) → feature matrix
+         → modeler fits model + train/test splits
+         → interpretability reads model + X_test/y_test
+```
 
-| Method | Path                         | Description              |
-|--------|------------------------------|--------------------------|
-| GET    | `/health`                    | Health                   |
-| GET    | `/v1/agents`                 | List agents              |
-| POST   | `/v1/pipelines`              | Create pipeline          |
-| GET    | `/v1/pipelines`              | List pipelines           |
-| GET    | `/v1/pipelines/{id}`         | Get status + results     |
-| POST   | `/v1/pipelines/{id}/run`     | Run (file or path)       |
+Internal keys (`_model`, `_X_test`, …) are stripped from public API responses.
 
-## 4. Design Principles
+## 4. API
 
-1. Service isolation
-2. Gateway as single LLM entrypoint
-3. Ownership & security first
-4. Observable pipelines
-5. Extensible agent registry
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health |
+| GET | `/v1/agents` | List agents |
+| POST | `/v1/pipelines` | Create (optional custom `steps`) |
+| GET | `/v1/pipelines` | List |
+| GET | `/v1/pipelines/{id}` | Status + results |
+| POST | `/v1/pipelines/{id}/run` | Upload file or `path` form field |
 
-## 5. Roadmap
+Optional form/instruction for target: modeler accepts `target_column` in context or `target=colname` in instruction (future API extension).
 
-| Phase | Deliverable                                   | Status  |
-|-------|-----------------------------------------------|---------|
-| 0     | Architecture docs                             | ✅ Done |
-| 1     | Skeleton + Supervisor + Data Loader           | ✅ Done |
-| 2     | Cleaner + EDA + Visualizer                    | ✅ Done |
-| 3     | Feature engineering + basic modeling          | Next    |
-| 4     | Code generation + reproducible scripts        | Planned |
-| 5     | Auth reuse + persistent storage               | Planned |
-| 6     | Web UI pipeline viewer                        | Planned |
+## 5. Dependencies
 
-## 6. References
+- Core: pandas, scikit-learn, fastapi
+- Optional: `shap` via `pip install zyntra-data-science-team[explain]`
 
-- Inspiration: https://github.com/business-science/ai-data-science-team
-- `docs/DATA_SCIENCE_TEAM.md`
+## 6. Roadmap
+
+| Phase | Status |
+|-------|--------|
+| 0 Docs | ✅ |
+| 1 Skeleton + loader | ✅ |
+| 2 Cleaner + EDA + Viz | ✅ |
+| 3 Feature eng + model + interpretability | ✅ |
+| 4 Code generation / reproducible scripts | Planned |
+| 5 Auth + persistent storage | Planned |
+| 6 Web pipeline viewer | Planned |

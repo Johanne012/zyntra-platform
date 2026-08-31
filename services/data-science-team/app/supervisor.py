@@ -8,16 +8,24 @@ from app.agents.base import BaseAgent
 from app.agents.cleaner import CleanerAgent
 from app.agents.data_loader import DataLoaderAgent
 from app.agents.eda import EDAAgent
+from app.agents.feature_engineer import FeatureEngineerAgent
+from app.agents.interpretability import InterpretabilityAgent
+from app.agents.modeler import ModelerAgent
 from app.agents.visualizer import VisualizerAgent
 
 
 class Supervisor:
-    """
-    Lightweight supervisor that maintains a registry of agents
-    and executes a simple sequential pipeline.
-    """
+    """Registry + sequential pipeline runner."""
 
-    DEFAULT_STEPS = ["data_loader", "cleaner", "eda", "visualizer"]
+    DEFAULT_STEPS = [
+        "data_loader",
+        "cleaner",
+        "eda",
+        "visualizer",
+        "feature_engineer",
+        "modeler",
+        "interpretability",
+    ]
 
     def __init__(self) -> None:
         self.agents: dict[str, BaseAgent] = {
@@ -25,13 +33,13 @@ class Supervisor:
             "cleaner": CleanerAgent(),
             "eda": EDAAgent(),
             "visualizer": VisualizerAgent(),
+            "feature_engineer": FeatureEngineerAgent(),
+            "modeler": ModelerAgent(),
+            "interpretability": InterpretabilityAgent(),
         }
 
     def list_agents(self) -> list[dict[str, str]]:
-        return [
-            {"name": a.name, "description": a.description}
-            for a in self.agents.values()
-        ]
+        return [{"name": a.name, "description": a.description} for a in self.agents.values()]
 
     async def run_step(
         self,
@@ -53,13 +61,11 @@ class Supervisor:
         steps: list[str],
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        """Run a sequence of agents, passing enriched context between them."""
         results: list[dict[str, Any]] = []
         current = dict(context)
 
         for step in steps:
             result = await self.run_step(step, current)
-            # Public result without internal dataframe
             results.append({k: v for k, v in result.items() if not k.startswith("_")})
 
             if result.get("status") != "ok":
@@ -69,8 +75,20 @@ class Supervisor:
                     "results": results,
                 }
 
+            # Carry forward internal artifacts
             if "_dataframe" in result:
                 current["dataframe"] = result["_dataframe"]
+            if "_feature_columns" in result:
+                current["feature_columns"] = result["_feature_columns"]
+            if "_model" in result:
+                current["model"] = result["_model"]
+                current["_model"] = result["_model"]
+            if "_target_column" in result:
+                current["target_column"] = result["_target_column"]
+            for key in ("_X_train", "_y_train", "_X_test", "_y_test"):
+                if key in result:
+                    current[key] = result[key]
+                    current[key[1:]] = result[key]  # also without underscore
 
         return {
             "status": "completed",
