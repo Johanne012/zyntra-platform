@@ -10,7 +10,7 @@ ZYNTRA is a **unified AI platform** monorepo that combines:
 - Multi-provider LLM Gateway (OpenAI-compatible)
 - Agent Runtime & management
 - Web control shell
-- Specialized multi-agent services (starting with Data Science Team)
+- Specialized multi-agent services (Data Science Team)
 
 ```
 ┌─────────────────┐
@@ -28,8 +28,8 @@ ZYNTRA is a **unified AI platform** monorepo that combines:
          │              └──────────────────────┘
          │
 ┌────────▼────────────────────────┐
-│ services/data-science-team      │  ← NEW
-│ Supervisor-led multi-agent DS   │
+│ services/data-science-team      │
+│ Supervisor + specialized agents │
 └─────────────────────────────────┘
 ```
 
@@ -50,11 +50,18 @@ ZYNTRA is a **unified AI platform** monorepo that combines:
 - Ownership isolation
 - Port: **8081**
 
-### 2.3 `apps/web`
+### 2.3 `services/data-science-team` (NEW)
+- Supervisor-led multi-agent Data Science service
+- Agents: Data Loader (more coming)
+- Pipeline API (create → run → inspect)
+- Uses ZYNTRA Gateway for LLM calls
+- Port: **8082**
+
+### 2.4 `apps/web`
 - Static shell (Console + Monitor)
 - Talks to gateway & agents services
 
-### 2.4 `packages/shared`
+### 2.5 `packages/shared`
 - Contracts and OpenAPI sketches
 
 ## 3. Design Principles
@@ -65,77 +72,56 @@ ZYNTRA is a **unified AI platform** monorepo that combines:
 4. **Observable** — stats, runs history, notifications
 5. **Extensible** — new specialized agent teams as separate services
 
-## 4. Expansion: Data Science Team
-
-### Goal
-Integrate a **Supervisor-led multi-agent Data Science team** based on the open-source project  
-[business-science/ai-data-science-team](https://github.com/business-science/ai-data-science-team).
-
-### Target Architecture (after integration)
+## 4. Data Science Team — Current State
 
 ```
 services/data-science-team/
 ├── app/
-│   ├── main.py                 # FastAPI entry
-│   ├── supervisor.py           # Routes tasks to specialists
-│   ├── agents/                 # Specialized agents
-│   │   ├── data_loader.py
-│   │   ├── cleaner.py
-│   │   ├── eda.py
-│   │   ├── visualizer.py
-│   │   ├── feature_engineer.py
-│   │   └── modeler.py          # H2O / sklearn
-│   ├── pipeline.py             # Reproducible pipeline tracking
-│   ├── gateway_client.py       # Talks to ZYNTRA gateway
-│   └── security.py
+│   ├── main.py              # FastAPI (health, agents, pipelines)
+│   ├── config.py
+│   ├── gateway_client.py    # Talks to ZYNTRA gateway
+│   ├── supervisor.py        # Routes tasks to specialists
+│   ├── pipeline.py          # In-memory pipeline store
+│   └── agents/
+│       ├── base.py
+│       └── data_loader.py   # CSV / Parquet / Excel / JSON
 ├── Dockerfile
 ├── pyproject.toml
 └── tests/
 ```
 
-### Integration Points
+### API (Phase 1)
 
-| Concern              | Decision                                      |
-|----------------------|-----------------------------------------------|
-| LLM calls            | Always via `services/gateway`                 |
-| Auth                 | Reuse ZYNTRA API keys (Bearer)                |
-| Data storage         | Local volume + optional object storage later  |
-| Pipeline state       | In-memory + persisted JSON / MLflow optional  |
-| Port                 | 8082                                          |
-| CI                   | Added to existing GitHub Actions workflow     |
+| Method | Path                              | Description                |
+|--------|-----------------------------------|----------------------------|
+| GET    | `/health`                         | Health check               |
+| GET    | `/v1/agents`                      | List available agents      |
+| POST   | `/v1/pipelines`                   | Create pipeline            |
+| GET    | `/v1/pipelines`                   | List pipelines             |
+| GET    | `/v1/pipelines/{id}`              | Get pipeline status        |
+| POST   | `/v1/pipelines/{id}/run`          | Run (file upload or path)  |
 
-### Capabilities (Phase 1)
+## 5. GitHub Actions
 
-- Load CSV / Parquet / Excel
-- Clean & wrangle data
-- Automated EDA + reports
-- Visualization generation
-- Feature engineering
-- Basic AutoML (H2O or sklearn)
-- Full reproducible pipeline + generated Python code
-
-## 5. GitHub Actions Strategy
-
-Current CI already covers gateway + agents.
-
-**New jobs to add:**
-
-- `data-science-team` — lint + unit tests
-- Optional: build & push Docker image on `main`
-- Structure checks for new service files
+CI jobs:
+- `gateway` — lint + test
+- `agents` — lint + test
+- `data-science-team` — lint + test
+- `web-structure` — required files check
 
 ## 6. Roadmap
 
 | Phase | Deliverable                                      | Status     |
 |-------|--------------------------------------------------|------------|
 | 0     | Architecture documentation                       | ✅ Done    |
-| 1     | Service skeleton + health endpoint               | Next       |
-| 2     | Supervisor + core agents (load/clean/EDA)        | Planned    |
-| 3     | Full pipeline + code generation                  | Planned    |
-| 4     | Web UI integration + pipeline viewer             | Planned    |
-| 5     | Production hardening (sandbox, quotas)           | Planned    |
+| 1     | Service skeleton + Supervisor + Data Loader      | ✅ Done    |
+| 2     | Cleaner + EDA + Visualizer agents                | Next       |
+| 3     | Feature engineering + basic modeling             | Planned    |
+| 4     | Full pipeline + code generation                  | Planned    |
+| 5     | Auth reuse from agents service + persistence     | Planned    |
+| 6     | Web UI integration + pipeline viewer             | Planned    |
 
 ## 7. References
 
-- Original library: https://github.com/business-science/ai-data-science-team
-- Internal: `docs/MIGRATION.md`, `docs/SECURITY_GATEWAY.md`
+- Original library inspiration: https://github.com/business-science/ai-data-science-team
+- Internal: `docs/MIGRATION.md`, `docs/SECURITY_GATEWAY.md`, `docs/DATA_SCIENCE_TEAM.md`
