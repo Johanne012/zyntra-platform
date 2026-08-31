@@ -56,6 +56,27 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+  data-science-team:
+    name: Data Science Team
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/data-science-team
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - name: Python
+        run: uv python install 3.12
+      - name: Install
+        run: uv sync --extra dev
+      - name: Ruff
+        run: uv run ruff check app tests
+      - name: Format
+        run: uv run ruff format --check app tests
+      - name: Test
+        run: uv run pytest -q
+
   web-structure:
     name: Web structure
     runs-on: ubuntu-latest
@@ -74,3 +95,7 @@ jobs:
           test -f packages/shared/contracts.md
           test -f docker-compose.yml
           test -f docs/BRANCH_PROTECTION.md
+          test -f docs/ARCHITECTURE.md
+          test -f docs/DATA_SCIENCE_TEAM.md
+          test -f services/data-science-team/app/main.py
+          test -f services/data-science-team/Dockerfile
