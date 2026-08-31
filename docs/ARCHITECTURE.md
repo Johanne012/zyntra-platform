@@ -10,7 +10,7 @@ ZYNTRA is a **unified AI platform** monorepo that combines:
 - Multi-provider LLM Gateway (OpenAI-compatible)
 - Agent Runtime & management
 - Web control shell
-- Specialized multi-agent services (Data Science Team)
+- Specialized multi-agent Data Science Team
 
 ```
 ┌─────────────────┐
@@ -28,45 +28,40 @@ ZYNTRA is a **unified AI platform** monorepo that combines:
          │
 ┌────────▼────────────────────────┐
 │ services/data-science-team      │
-│ Supervisor + 4 specialist agents│
+│ Supervisor + 4 specialized agents│
 └─────────────────────────────────┘
 ```
 
 ## 2. Services
 
-| Service | Port | Role |
-|---------|------|------|
-| gateway | 8080 | LLM proxy + stats |
-| agents | 8081 | Generic agents CRUD + runs |
-| data-science-team | 8082 | Supervisor-led DS pipeline |
-| web | 3000 | Static control shell |
+| Service              | Port | Role                                      |
+|----------------------|------|-------------------------------------------|
+| gateway              | 8080 | LLM proxy, balancing, stats               |
+| agents               | 8081 | Generic agents CRUD + runs                |
+| data-science-team    | 8082 | Supervisor-led DS pipeline                |
+| web                  | 3000 | Static control shell                      |
 
-## 3. Data Science Team (current)
+## 3. Data Science Team — Agents (Phase 2)
 
-**Agents**
+| Agent        | Role                                                                 |
+|--------------|----------------------------------------------------------------------|
+| data_loader  | Load CSV / Parquet / Excel / JSON                                    |
+| cleaner      | Drop empty cols/rows, impute nulls, strip strings, remove duplicates |
+| eda          | Describe, missingness, correlations, value counts, cardinality       |
+| visualizer   | Chart specs: histogram, bar, correlation heatmap (Plotly-ready)      |
 
-| Agent | Role |
-|-------|------|
-| `data_loader` | Load CSV / Parquet / Excel / JSON |
-| `cleaner` | Drop null cols, strip strings, dedupe, median/mode impute |
-| `eda` | Describe, missingness, correlations, value counts |
-| `visualizer` | Histogram / bar / heatmap chart specs (JSON) |
+**Default pipeline:** `data_loader → cleaner → eda → visualizer`
 
-**Default pipeline**
-```
-data_loader → cleaner → eda → visualizer
-```
+### API
 
-**API**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health |
-| GET | `/v1/agents` | List agents |
-| POST | `/v1/pipelines` | Create pipeline |
-| GET | `/v1/pipelines` | List |
-| GET | `/v1/pipelines/{id}` | Status + results |
-| POST | `/v1/pipelines/{id}/run` | Run (file upload or path) |
+| Method | Path                         | Description              |
+|--------|------------------------------|--------------------------|
+| GET    | `/health`                    | Health                   |
+| GET    | `/v1/agents`                 | List agents              |
+| POST   | `/v1/pipelines`              | Create pipeline          |
+| GET    | `/v1/pipelines`              | List pipelines           |
+| GET    | `/v1/pipelines/{id}`         | Get status + results     |
+| POST   | `/v1/pipelines/{id}/run`     | Run (file or path)       |
 
 ## 4. Design Principles
 
@@ -74,28 +69,21 @@ data_loader → cleaner → eda → visualizer
 2. Gateway as single LLM entrypoint
 3. Ownership & security first
 4. Observable pipelines
-5. Extensible specialist teams
+5. Extensible agent registry
 
-## 5. GitHub Actions
+## 5. Roadmap
 
-- `gateway` — lint + test
-- `agents` — lint + test
-- `data-science-team` — lint + test
-- `web-structure` — required files
+| Phase | Deliverable                                   | Status  |
+|-------|-----------------------------------------------|---------|
+| 0     | Architecture docs                             | ✅ Done |
+| 1     | Skeleton + Supervisor + Data Loader           | ✅ Done |
+| 2     | Cleaner + EDA + Visualizer                    | ✅ Done |
+| 3     | Feature engineering + basic modeling          | Next    |
+| 4     | Code generation + reproducible scripts        | Planned |
+| 5     | Auth reuse + persistent storage               | Planned |
+| 6     | Web UI pipeline viewer                        | Planned |
 
-## 6. Roadmap
-
-| Phase | Deliverable | Status |
-|-------|-------------|--------|
-| 0 | Architecture docs | ✅ |
-| 1 | Skeleton + Supervisor + Data Loader | ✅ |
-| 2 | Cleaner + EDA + Visualizer | ✅ |
-| 3 | Feature engineering + basic modeling | Next |
-| 4 | Code generation + reproducible scripts | Planned |
-| 5 | Auth reuse + persistence | Planned |
-| 6 | Web UI pipeline viewer | Planned |
-
-## 7. References
+## 6. References
 
 - Inspiration: https://github.com/business-science/ai-data-science-team
 - `docs/DATA_SCIENCE_TEAM.md`
