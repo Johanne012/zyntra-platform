@@ -26,8 +26,8 @@ class CodeGeneratorAgent(BaseAgent):
             '"""',
             "from __future__ import annotations",
             "",
-            "import pandas as pd",
             "import numpy as np",
+            "import pandas as pd",
             "",
         ]
 
@@ -39,7 +39,6 @@ class CodeGeneratorAgent(BaseAgent):
                 [
                     "from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor",
                     "from sklearn.model_selection import train_test_split",
-                    "from sklearn.metrics import accuracy_score, f1_score, r2_score, mean_absolute_error",
                     "from sklearn.inspection import permutation_importance",
                     "",
                 ]
@@ -82,22 +81,47 @@ class CodeGeneratorAgent(BaseAgent):
             )
 
         if "feature_engineer" in steps_covered:
+            tgt = target or "TARGET_COLUMN"
             lines.extend(
                 [
-                    "# --- Feature engineering ---",
-                    "# Drop very high-cardinality object columns",
-                    "for col in list(df.select_dtypes(include=['object', 'string']).columns):",
-                    "    if df[col].nunique(dropna=True) > max(50, int(0.5 * len(df))):",
-                    "        df = df.drop(columns=[col])",
-                    "cat_cols = [c for c in df.select_dtypes(include=['object', 'string', 'category']).columns",
-                    "            if df[c].nunique(dropna=True) <= 20]",
-                    "if cat_cols:",
-                    "    df = pd.get_dummies(df, columns=cat_cols, dummy_na=False)",
-                    "num_cols = df.select_dtypes(include='number').columns",
-                    "for col in num_cols:",
-                    "    std = df[col].std()",
-                    "    if std and std > 0:",
-                    "        df[col] = (df[col] - df[col].mean()) / std",
+                    "# --- Feature engineering (mirrors service logic, simplified) ---",
+                    f"TARGET = "{tgt}"",
+                    "feature_df = df.drop(columns=[TARGET], errors='ignore').copy()",
+                    "# Datetime-like object columns",
+                    "for col in list(feature_df.columns):",
+                    "    if feature_df[col].dtype == object:",
+                    "        sample = feature_df[col].dropna().astype(str).head(50)",
+                    "        if len(sample) >= 3:",
+                    "            parsed = pd.to_datetime(sample, errors='coerce')",
+                    "            if parsed.notna().mean() >= 0.8:",
+                    "                p = pd.to_datetime(feature_df[col], errors='coerce')",
+                    "                feature_df[f'{col}_month'] = p.dt.month",
+                    "                feature_df[f'{col}_dayofweek'] = p.dt.dayofweek",
+                    "                feature_df = feature_df.drop(columns=[col])",
+                    "# Frequency encode mid-cardinality categoricals",
+                    "for col in list(feature_df.select_dtypes(include=['object', 'string', 'category']).columns):",
+                    "    n = feature_df[col].nunique(dropna=True)",
+                    "    if 20 < n <= 100:",
+                    "        freq = feature_df[col].value_counts(dropna=False)",
+                    "        feature_df[f'{col}_freq'] = feature_df[col].map(freq).astype(float)",
+                    "        feature_df = feature_df.drop(columns=[col])",
+                    "    elif n <= 20:",
+                    "        feature_df = pd.get_dummies(feature_df, columns=[col], dummy_na=False)",
+                    "    else:",
+                    "        feature_df = feature_df.drop(columns=[col])",
+                    "# log1p + robust scale numerics",
+                    "for col in feature_df.select_dtypes(include='number').columns:",
+                    "    s = feature_df[col].astype(float)",
+                    "    if s.notna().sum() >= 3 and (s.dropna() >= 0).all() and abs(float(s.skew())) > 1.0:",
+                    "        s = np.log1p(s)",
+                    "        feature_df[col] = s",
+                    "    median, q1, q3 = float(s.median()), float(s.quantile(0.25)), float(s.quantile(0.75))",
+                    "    iqr = q3 - q1",
+                    "    if iqr > 0:",
+                    "        feature_df[col] = (s - median) / iqr",
+                    "if TARGET in df.columns:",
+                    "    feature_df[TARGET] = df[TARGET].values",
+                    "df = feature_df",
                     "print('features', df.shape)",
                     "",
                 ]
@@ -108,7 +132,7 @@ class CodeGeneratorAgent(BaseAgent):
             lines.extend(
                 [
                     "# --- Model ---",
-                    f"TARGET = "{tgt}"  # set explicitly if auto-detect was used",
+                    f"TARGET = "{tgt}"",
                     "if TARGET not in df.columns:",
                     "    raise SystemExit(f'Target {TARGET!r} missing: {list(df.columns)}')",
                     "feature_cols = [c for c in df.select_dtypes(include='number').columns if c != TARGET]",
@@ -117,12 +141,12 @@ class CodeGeneratorAgent(BaseAgent):
                     "mask = y.notna()",
                     "X, y = X.loc[mask], y.loc[mask]",
                     "X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)",
-                    "# Task heuristic: few unique ints => classification",
-                    "is_clf = y.nunique() <= 20 and str(y.dtype).startswith(('int', 'bool', 'object', 'category'))",
-                    "if is_clf:",
-                    "    model = RandomForestClassifier(n_estimators=50, max_depth=8, random_state=42)",
-                    "else:",
-                    "    model = RandomForestRegressor(n_estimators=50, max_depth=8, random_state=42)",
+                    "is_clf = y.nunique() <= 20",
+                    "model = (",
+                    "    RandomForestClassifier(n_estimators=50, max_depth=8, random_state=42)",
+                    "    if is_clf else",
+                    "    RandomForestRegressor(n_estimators=50, max_depth=8, random_state=42)",
+                    ")",
                     "model.fit(X_train, y_train)",
                     "print('score', model.score(X_test, y_test))",
                     "",
@@ -140,14 +164,7 @@ class CodeGeneratorAgent(BaseAgent):
                 ]
             )
 
-        lines.extend(
-            [
-                "# --- Done ---",
-                "print('Pipeline script finished.')",
-                "",
-            ]
-        )
-
+        lines.extend(["# --- Done ---", "print('Pipeline script finished.')", ""])
         script = "\n".join(lines)
 
         return {
