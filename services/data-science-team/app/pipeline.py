@@ -1,4 +1,4 @@
-"""In-memory pipeline store (Phase 1)."""
+"""In-memory pipeline store (Phase 1–2)."""
 
 from __future__ import annotations
 
@@ -7,20 +7,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
+from app.supervisor import Supervisor
+
 
 @dataclass
 class Pipeline:
     id: str
     name: str
     status: str = "created"  # created | running | completed | failed
-    steps: list[str] = field(default_factory=list)
+    steps: list[str] = field(default_factory=lambda: list(Supervisor.DEFAULT_PIPELINE))
     results: list[dict[str, Any]] = field(default_factory=list)
     context: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def to_public(self) -> dict[str, Any]:
-        """Return a JSON-safe view (no internal DataFrames)."""
         return {
             "id": self.id,
             "name": self.name,
@@ -41,7 +42,7 @@ class PipelineStore:
         pipe = Pipeline(
             id=pid,
             name=name,
-            steps=steps or ["data_loader"],
+            steps=steps or list(Supervisor.DEFAULT_PIPELINE),
         )
         self._pipelines[pid] = pipe
         return pipe

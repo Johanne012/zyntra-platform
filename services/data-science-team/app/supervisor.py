@@ -5,18 +5,26 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.base import BaseAgent
+from app.agents.cleaner import CleanerAgent
 from app.agents.data_loader import DataLoaderAgent
+from app.agents.eda import EDAAgent
+from app.agents.visualizer import VisualizerAgent
 
 
 class Supervisor:
     """
     Lightweight supervisor that maintains a registry of agents
-    and executes a simple sequential pipeline.
+    and executes a sequential pipeline.
     """
+
+    DEFAULT_PIPELINE = ["data_loader", "cleaner", "eda", "visualizer"]
 
     def __init__(self) -> None:
         self.agents: dict[str, BaseAgent] = {
             "data_loader": DataLoaderAgent(),
+            "cleaner": CleanerAgent(),
+            "eda": EDAAgent(),
+            "visualizer": VisualizerAgent(),
         }
 
     def list_agents(self) -> list[dict[str, str]]:
@@ -51,7 +59,9 @@ class Supervisor:
 
         for step in steps:
             result = await self.run_step(step, current)
-            results.append({k: v for k, v in result.items() if not k.startswith("_")})
+            # Public result without internal objects
+            public = {k: v for k, v in result.items() if not k.startswith("_")}
+            results.append(public)
 
             if result.get("status") != "ok":
                 return {
@@ -60,7 +70,6 @@ class Supervisor:
                     "results": results,
                 }
 
-            # Carry dataframe forward if present
             if "_dataframe" in result:
                 current["dataframe"] = result["_dataframe"]
 
@@ -71,5 +80,4 @@ class Supervisor:
         }
 
 
-# Singleton used by the API
 supervisor = Supervisor()
